@@ -1,10 +1,15 @@
 const mongoose = require('mongoose');
+
 const AnalysisSchema = new mongoose.Schema({
-  threadText: String,
-  summary: String,
-  topics: [String],
-  sentimentScore: Number,
-  engagementLevel: String,
+  resumeText: String,
+  jobDescription: String,
+  matchScore: Number,
+  strengths: [String],
+  gaps: [String],
+  suggestions: [String],
+  keywords: [String],
+  verdict: String,
   createdAt: { type: Date, default: Date.now }
 });
+
 module.exports = mongoose.model('Analysis', AnalysisSchema);
