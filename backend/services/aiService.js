@@ -8,14 +8,26 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
 // Fallback analysis when API quota is exceeded
 function generateMockAnalysis(resumeText, jobDescription) {
-  const resumeKeywords = resumeText.toLowerCase().split(/\s+/);
-  const jobKeywords = jobDescription.toLowerCase().split(/\s+/);
+  const resumeWords = resumeText.toLowerCase();
+  const jobWords = jobDescription.toLowerCase();
   
-  const matchingKeywords = jobKeywords.filter(k => 
-    k.length > 4 && resumeKeywords.some(r => r.includes(k) || k.includes(r))
-  );
+  // Extract skills from job description
+  const jobSkills = jobDescription
+    .split(/[,\n]/)
+    .map(s => s.trim().toLowerCase())
+    .filter(s => s.length > 3 && s.length < 30);
   
-  const matchScore = Math.min(100, Math.round((matchingKeywords.length / Math.max(1, jobKeywords.filter(k => k.length > 4).length)) * 100));
+  // Check which skills are mentioned in resume
+  const matchedSkills = jobSkills.filter(skill => 
+    resumeWords.includes(skill)
+  ).slice(0, 5);
+  
+  const missingSkills = jobSkills.filter(skill => 
+    !resumeWords.includes(skill)
+  ).slice(0, 4);
+  
+  const matchPercentage = Math.round((matchedSkills.length / Math.max(1, jobSkills.length)) * 100);
+  const matchScore = Math.min(100, 40 + matchPercentage);
   
   let verdict = 'Poor Match';
   if (matchScore >= 75) verdict = 'Excellent Match';
@@ -25,29 +37,35 @@ function generateMockAnalysis(resumeText, jobDescription) {
   return {
     matchScore,
     verdict,
+    matchBreakdown: {
+      skillsMatch: `${matchPercentage}% of required skills present (${matchedSkills.length}/${jobSkills.length})`,
+      experienceMatch: resumeWords.includes('experience') ? 'Experience is mentioned in resume' : 'Experience level not clearly detailed',
+      educationMatch: resumeWords.includes('education') || resumeWords.includes('degree') ? 'Education/qualifications mentioned' : 'Education not clearly specified'
+    },
     strengths: [
-      'Resume is well-structured and professional',
-      'Key technical skills are clearly listed',
-      'Experience demonstrates relevant background',
-      'Achievements are quantified where possible'
+      matchedSkills.length > 0 ? `Resume includes ${matchedSkills.length} relevant skills: ${matchedSkills.slice(0, 2).join(', ')}` : 'Professional resume format',
+      resumeWords.includes('project') || resumeWords.includes('achievement') ? 'Includes project examples and achievements' : 'Professional background described',
+      resumeWords.includes('metric') || resumeWords.includes('result') ? 'Quantifies achievements with results' : 'Shows career progression',
+      'Overall presentation is clear and organized'
     ],
     gaps: [
-      'Some job-specific keywords could be emphasized more',
-      'Consider adding more industry-specific certifications',
-      'Technical skills could be expanded',
-      'Projects section could demonstrate more relevance'
+      missingSkills.length > 0 ? `Missing ${missingSkills.length} key skills: ${missingSkills.slice(0, 2).join(', ')}` : 'Could enhance skill descriptions',
+      'Could add more specific job-related projects',
+      'Could include more industry-specific certifications',
+      'Could better highlight quantified achievements'
     ],
     suggestions: [
-      'Tailor keywords to match job description more closely',
-      'Add 2-3 lines about achievements in this specific field',
-      'Highlight relevant technical skills prominently',
-      'Include metrics and results for past projects',
-      'Mention similar tools or technologies you\'ve used'
+      missingSkills.length > 0 ? `Add skills: ${missingSkills.slice(0, 3).join(', ')}` : 'Enhance technical skills section',
+      'Include 2-3 specific projects relevant to this role',
+      'Add metrics and business impact to achievements',
+      'Highlight similar technologies and tools used',
+      'Tailor professional summary to this specific job'
     ],
-    keywords: jobKeywords
-      .filter(k => k.length > 4)
-      .slice(0, 10)
-      .map(k => (resumeKeywords.some(r => r.includes(k)) ? '✓ ' : '✗ ') + k)
+    keywordAnalysis: {
+      required: jobSkills.slice(0, 5),
+      matched: matchedSkills,
+      missing: missingSkills
+    }
   };
 }
 
@@ -58,15 +76,9 @@ async function analyzeResume(resumeText, jobDescription) {
 
   const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
-  const prompt = `You are an expert resume reviewer and career coach.
+  const prompt = `You are an expert resume reviewer and career coach. Analyze this resume SPECIFICALLY against the job description.
 
-Analyze this resume against the job description and return ONLY a JSON object with:
-- matchScore: number from 0 to 100
-- verdict: one of "Excellent Match", "Good Match", "Partial Match", "Poor Match"
-- strengths: array of 4-5 strings (what the resume does well for this job)
-- gaps: array of 3-4 strings (what is missing or weak)
-- suggestions: array of 4-5 strings (specific improvements to tailor resume)
-- keywords: array of 8-10 important keywords from job description (mark if present in resume by adding ✓ prefix or ✗ prefix)
+IMPORTANT: Provide detailed, SPECIFIC analysis based on the actual content. Not generic responses.
 
 Resume:
 ${resumeText}
@@ -74,7 +86,42 @@ ${resumeText}
 Job Description:
 ${jobDescription}
 
-Return ONLY valid JSON. No markdown, no extra text.`;
+Return ONLY a valid JSON object (no markdown, no code blocks):
+{
+  "matchScore": number 0-100,
+  "verdict": "Excellent Match" | "Good Match" | "Partial Match" | "Poor Match",
+  "matchBreakdown": {
+    "skillsMatch": "percentage and which skills match",
+    "experienceMatch": "how experience aligns with job requirements",
+    "educationMatch": "how education aligns with role"
+  },
+  "strengths": [
+    "SPECIFIC strength 1 from actual resume content",
+    "SPECIFIC strength 2 from actual resume content",
+    "SPECIFIC strength 3 from actual resume content",
+    "SPECIFIC strength 4 from actual resume content"
+  ],
+  "gaps": [
+    "SPECIFIC gap 1: What's missing from resume for this job",
+    "SPECIFIC gap 2: What's missing from resume for this job",
+    "SPECIFIC gap 3: What's missing from resume for this job",
+    "SPECIFIC gap 4: What's missing from resume for this job"
+  ],
+  "suggestions": [
+    "SPECIFIC suggestion 1: Exact change to make resume better",
+    "SPECIFIC suggestion 2: Exact change to make resume better",
+    "SPECIFIC suggestion 3: Exact change to make resume better",
+    "SPECIFIC suggestion 4: Exact change to make resume better",
+    "SPECIFIC suggestion 5: Exact change to make resume better"
+  ],
+  "keywordAnalysis": {
+    "required": ["job requirement 1", "job requirement 2", "job requirement 3"],
+    "matched": ["skill from resume that matches", "another matched skill"],
+    "missing": ["required skill not in resume", "another missing skill"]
+  }
+}
+
+Be specific. Reference actual skills/experience from the resume. Not generic.`;
 
   try {
     const result = await model.generateContent(prompt);
