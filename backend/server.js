@@ -4,7 +4,25 @@ const cors = require('cors');
 require('dotenv').config();
 
 const app = express();
-app.use(cors());
+
+// CORS configuration
+const allowedOrigins = [
+  'http://localhost:3000',           // Local development
+  'http://localhost:5000',           // Local backend
+  'https://ai-job-frontend-murex.vercel.app', // Production frontend
+];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true
+}));
+
 app.use(express.json());
 
 app.locals.useMemoryStore = true;
@@ -32,7 +50,8 @@ app.use('/api/results', require('./routes/results'));
 
 async function startServer() {
 	await connectDatabase();
-	app.listen(5000, () => console.log('Server running on port 5000'));
+	const PORT = process.env.PORT || 5000;
+	app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 }
 
 startServer();
